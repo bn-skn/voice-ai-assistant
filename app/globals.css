@@ -24,3 +24,654 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Скрываем значок Next.js в левом нижнем углу - несколько способов */
+body > div:last-child {
+  display: none !important;
+}
+
+[data-nextjs-toast-errors-parent] {
+  display: none !important;
+}
+
+/* Скрываем все возможные dev indicators */
+div[style*="position: fixed"][style*="bottom"][style*="left"] {
+  display: none !important;
+}
+
+/* Скрываем по z-index */
+div[style*="z-index: 99999"] {
+  display: none !important;
+}
+
+/* Специфичный селектор для Next.js dev overlay */
+.__next-dev-overlay-left-bottom {
+  display: none !important;
+}
+
+/* ===== СОВРЕМЕННЫЕ АНИМАЦИИ И ЭФФЕКТЫ ===== */
+
+/* Blob анимация для фоновых элементов */
+@keyframes blob {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Плавная анимация появления */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+/* Анимация исчезновения */
+@keyframes fadeOutDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+}
+
+.animate-fade-out-down {
+  animation: fadeOutDown 0.3s ease-in forwards;
+}
+
+/* Анимации для модального окна */
+@keyframes modalBackdropFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalBackdropFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modalSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+}
+
+.animate-modal-backdrop-in {
+  animation: modalBackdropFadeIn 0.2s ease-out forwards;
+}
+
+.animate-modal-backdrop-out {
+  animation: modalBackdropFadeOut 0.2s ease-in forwards;
+}
+
+.animate-modal-in {
+  animation: modalSlideIn 0.3s ease-out forwards;
+}
+
+.animate-modal-out {
+  animation: modalSlideOut 0.2s ease-in forwards;
+}
+
+/* Glassmorphism эффект */
+.glass {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+}
+
+/* Улучшенные кнопки */
+.btn-primary {
+  @apply bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700;
+  @apply text-white font-semibold py-4 px-8 rounded-2xl;
+  @apply transform transition-all duration-200 ease-in-out;
+  @apply hover:scale-105 hover:shadow-lg;
+  @apply focus:outline-none focus:ring-4 focus:ring-blue-300;
+  box-shadow: 0 4px 12px -2px rgba(59, 130, 246, 0.3);
+}
+
+/* Кнопка отключиться */
+.btn-disconnect {
+  box-shadow: 0 4px 12px -2px rgba(239, 68, 68, 0.3);
+}
+
+.btn-primary:active {
+  @apply scale-95;
+}
+
+/* Улучшенные карточки */
+.card {
+  @apply bg-white/80 backdrop-blur-lg border border-white/20;
+  @apply rounded-3xl shadow-lg;
+  @apply transform transition-all duration-300 ease-in-out;
+}
+
+.card:hover {
+  @apply shadow-xl scale-[1.02];
+}
+
+/* Современная типографика */
+.heading-primary {
+  @apply text-4xl md:text-5xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent;
+  @apply mb-4;
+}
+
+.heading-secondary {
+  @apply text-2xl md:text-3xl font-semibold text-gray-800;
+  @apply mb-3;
+}
+
+.text-body {
+  @apply text-gray-600 text-lg leading-relaxed;
+}
+
+/* Статус индикаторы */
+.status-indicator {
+  @apply inline-flex items-center px-4 py-2 rounded-full text-sm font-medium;
+  @apply transition-all duration-200 ease-in-out;
+}
+
+.status-disconnected {
+  @apply bg-gray-100/80 text-gray-700 border border-gray-200/50;
+}
+
+.status-connecting {
+  @apply bg-yellow-100/80 text-yellow-800 border border-yellow-200/50;
+}
+
+.status-connected {
+  @apply bg-green-100/80 text-green-800 border border-green-200/50;
+}
+
+/* Пульсирующий эффект */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Улучшенные hover эффекты */
+.hover-lift {
+  @apply transform transition-all duration-200 ease-in-out;
+}
+
+.hover-lift:hover {
+  @apply -translate-y-1 shadow-lg;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .heading-primary {
+    @apply text-3xl;
+  }
+  
+  .heading-secondary {
+    @apply text-xl;
+  }
+}
+
+/* ===== 🎭 PREMIUM 3D VOICE ORB - HOLLYWOOD МИРОВОГО КЛАССА ===== */
+
+/* CSS Custom Properties для динамического управления */
+:root {
+  --orb-primary-color: #6b7280;
+  --orb-secondary-color: #4b5563;
+  --orb-glow-intensity: 0.3;
+  --orb-animation-speed: 1;
+  --orb-scale: 1;
+  --volume-scale: 1;
+  --input-volume: 0;
+  --output-volume: 0;
+}
+
+/* Базовый 3D шар с улучшенной физикой */
+.voice-orb {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transform-style: preserve-3d;
+  transition: 
+    background 1.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.8s cubic-bezier(0.34, 1.56, 0.64, 1),
+    filter 1.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  cursor: pointer;
+  scale: var(--orb-scale);
+}
+
+/* Убрана базовая анимация orb-breathe для избежания конфликтов */
+
+/* Ядро шара с динамическими цветами */
+.voice-orb__core {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, 
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.1) 40%,
+    transparent 70%
+  );
+  box-shadow: 
+    inset 0 0 20px rgba(255, 255, 255, 0.2),
+    inset 0 0 40px rgba(255, 255, 255, 0.1),
+    0 0 20px rgba(0, 0, 0, 0.1);
+  transform: translateZ(10px);
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Улучшенные блики с профессиональным освещением */
+.voice-orb__highlight {
+  position: absolute;
+  top: 15%;
+  left: 25%;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,
+    rgba(255, 255, 255, 0.6) 0%,
+    rgba(255, 255, 255, 0.2) 30%,
+    transparent 70%
+  );
+  filter: blur(1px);
+  transform: translateZ(15px);
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+/* Убираем анимацию highlight-dance полностью */
+
+/* Реалистичные отражения */
+.voice-orb__reflection {
+  position: absolute;
+  bottom: 20%;
+  right: 30%;
+  width: 20%;
+  height: 40%;
+  border-radius: 50%;
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 70%
+  );
+  filter: blur(1px);
+  transform: translateZ(5px);
+  transition: opacity 0.2s ease;
+}
+
+/* Кольца эффектов с поэтапной активацией */
+.voice-orb__ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid;
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.voice-orb__ring--outer {
+  inset: -25px;
+  border-color: rgba(255, 255, 255, 0.08);
+  border-width: 2px;
+}
+
+.voice-orb__ring--middle {
+  inset: -15px;
+  border-color: rgba(255, 255, 255, 0.12);
+  border-width: 1.5px;
+}
+
+.voice-orb__ring--inner {
+  inset: 8px;
+  border-color: rgba(255, 255, 255, 0.18);
+  border-width: 1px;
+}
+
+/* Продвинутая тень с реалистичной физикой */
+.voice-orb__shadow {
+  position: absolute;
+  bottom: -45px;
+  left: 50%;
+  width: 85px;
+  height: 25px;
+  background: radial-gradient(ellipse at center,
+    rgba(0, 0, 0, 0.25) 0%,
+    rgba(0, 0, 0, 0.08) 50%,
+    transparent 80%
+  );
+  transform: translateX(-50%);
+  filter: blur(10px);
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* ===== 1️⃣ СОСТОЯНИЕ: DISCONNECTED - "Спящий страж" ===== */
+.voice-orb--disconnected {
+  --orb-primary-color: #94a3b8;
+  --orb-secondary-color: #64748b;
+  --orb-glow-intensity: 0.3;
+  
+  background: radial-gradient(circle at 30% 40%,
+    #94a3b8 0%,
+    #64748b 100%
+  );
+  box-shadow: 
+    0 12px 35px rgba(100, 116, 139, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: disconnected-meditation 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes disconnected-meditation {
+  0%, 100% {
+    transform: scale(0.95);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.voice-orb--disconnected .voice-orb__ring--outer {
+  opacity: 0;
+}
+
+.voice-orb--disconnected .voice-orb__ring--middle {
+  opacity: 0;
+}
+
+@keyframes ring-flicker {
+  0%, 90%, 100% {
+    opacity: 0.1;
+  }
+  94%, 96% {
+    opacity: 0.3;
+  }
+}
+
+.voice-orb__shadow--disconnected {
+  opacity: 0.3;
+  background: radial-gradient(ellipse at center,
+    rgba(100, 116, 139, 0.2) 0%,
+    rgba(100, 116, 139, 0.08) 50%,
+    transparent 80%
+  );
+}
+
+@keyframes shadow-breathe {
+  0%, 100% {
+    transform: translateX(-50%) scale(0.9);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.1);
+  }
+}
+
+/* ===== 2️⃣ СОСТОЯНИЕ: CONNECTING - "Пробуждение сознания" ===== */
+.voice-orb--connecting {
+  --orb-primary-color: #e4cd21;
+  --orb-secondary-color: #c8ae08;
+  --orb-glow-intensity: 0.6;
+  
+  background: radial-gradient(circle at 30% 40%,
+    #fef08a 0%,
+    #f59e0b 100%
+  );
+  box-shadow: 
+    0 18px 45px rgba(245, 158, 11, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  animation: connecting-awakening 2s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+}
+
+@keyframes connecting-awakening {
+  0%, 100% {
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* Поэтапная активация колец - УБРАНО */
+.voice-orb--connecting .voice-orb__ring--inner {
+  opacity: 0;
+}
+
+.voice-orb--connecting .voice-orb__ring--middle {
+  opacity: 0;
+}
+
+.voice-orb--connecting .voice-orb__ring--outer {
+  opacity: 0;
+}
+
+/* Анимации активации колец удалены */
+
+/* Частицы используются только для connecting состояния - оставляем минимум */
+.voice-orb__particles {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+.voice-orb__particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: radial-gradient(circle, #fef08a 0%, #f59e0b 50%, transparent 100%);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform-origin: 0 0;
+  animation: particle-orbit-enhanced 3s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+  animation-delay: var(--delay);
+}
+
+@keyframes particle-orbit-enhanced {
+  0% {
+    transform: rotate(var(--angle)) translateX(60px) rotate(calc(-1 * var(--angle))) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    transform: rotate(calc(var(--angle) + 90deg)) translateX(90px) rotate(calc(-1 * (var(--angle) + 90deg))) scale(1);
+    opacity: 1;
+  }
+  75% {
+    transform: rotate(calc(var(--angle) + 270deg)) translateX(90px) rotate(calc(-1 * (var(--angle) + 270deg))) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(calc(var(--angle) + 360deg)) translateX(60px) rotate(calc(-1 * (var(--angle) + 360deg))) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.voice-orb__shadow--connecting {
+  opacity: 0.4;
+  background: radial-gradient(ellipse at center,
+    rgba(245, 158, 11, 0.2) 0%,
+    rgba(245, 158, 11, 0.08) 50%,
+    transparent 80%
+  );
+}
+
+@keyframes shadow-pulse-connecting {
+  0%, 100% {
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.15);
+  }
+}
+
+/* ===== 3️⃣ СОСТОЯНИЕ: TALKING - "Активное общение" ===== */
+.voice-orb--talking {
+  --orb-primary-color: #191df2;
+  --orb-secondary-color: #0b00dd;
+  --orb-glow-intensity: 0.5;
+  
+  background: radial-gradient(circle at 30% 40%,
+    #6366f1 0%,
+    #4f46e5 100%
+  );
+  box-shadow: 
+    0 16px 40px rgba(79, 70, 229, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: scale(var(--volume-scale, 1));
+  transition: transform 0.1s ease-out;
+}
+
+/* Анимации волн удалены */
+
+/* Кольца для talking - УБРАНЫ */
+.voice-orb--talking .voice-orb__ring--outer {
+  opacity: 0;
+}
+
+.voice-orb--talking .voice-orb__ring--middle {
+  opacity: 0;
+}
+
+/* Анимация ring-rotate-slow удалена */
+
+.voice-orb__shadow--talking {
+  opacity: 0.4;
+  background: radial-gradient(ellipse at center,
+    rgba(79, 70, 229, 0.15) 0%,
+    rgba(79, 70, 229, 0.06) 50%,
+    transparent 80%
+  );
+}
+
+/* Состояние SPEAKING убрано - остается только TALKING */
+
+/* Анимации эквалайзера удалены */
+
+/* Анимации частиц речи удалены */
+
+/* Анимации колец удалены */
+
+/* Анимации теней удалены */
+
+/* ===== 🎭 ПРОДВИНУТЫЕ ИНТЕРАКТИВНЫЕ ЭФФЕКТЫ ===== */
+.voice-orb:hover {
+  opacity: 0.9;
+}
+
+.voice-orb:active {
+  opacity: 0.8;
+}
+
+/* Hover эффекты для highlight */
+.voice-orb:hover .voice-orb__highlight {
+  opacity: 0.9;
+}
+
+/* ===== 📱 АДАПТИВНАЯ АНИМАЦИЯ ===== */
+/* Медиа-запросы для удаленных элементов убраны */
+
+/* ===== ♿ ACCESSIBILITY ПОДДЕРЖКА ===== */
+@media (prefers-reduced-motion: reduce) {
+  .voice-orb,
+  .voice-orb__ring,
+  .voice-orb__highlight {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  .voice-orb--disconnected {
+    filter: brightness(0.5);
+  }
+  
+  .voice-orb--connecting {
+    filter: brightness(0.8) hue-rotate(20deg);
+  }
+  
+  .voice-orb--talking {
+    filter: brightness(0.9) hue-rotate(220deg);
+  }
+}
+
+/* ===== 🎨 HIGH CONTRAST MODE ===== */
+@media (prefers-contrast: high) {
+  .voice-orb--disconnected {
+    background: #000;
+    border: 2px solid #fff;
+  }
+  
+  .voice-orb--connecting {
+    background: #ff0;
+    border: 2px solid #000;
+  }
+  
+  .voice-orb--talking {
+    background: #00f;
+    border: 2px solid #fff;
+  }
+}
+
+/* ===== 🎯 КОНЕЦ VOICE ORB СТИЛЕЙ МИРОВОГО КЛАССА ===== */

@@ -1,7 +1,36 @@
 {
   "name": "voice-ai-assistant",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "Продвинутое веб-приложение голосового ИИ-ассистента на базе OpenAI Realtime API с поддержкой ChatGPT Web Search и системой безопасности",
+  "keywords": [
+    "openai",
+    "realtime-api", 
+    "voice-assistant",
+    "chatgpt-search",
+    "nextjs",
+    "typescript",
+    "webrtc",
+    "ai",
+    "voice-chat",
+    "chatgpt"
+  ],
+  "author": {
+    "name": "Voice AI Assistant Team"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/voice-ai-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/voice-ai-assistant/issues"
+  },
+  "homepage": "https://github.com/yourusername/voice-ai-assistant#readme",
+  "private": false,
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -9,19 +38,20 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "next": "15.3.4",
+    "openai": "^5.5.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "next": "15.3.4"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
-    "@eslint/eslintrc": "^3"
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
