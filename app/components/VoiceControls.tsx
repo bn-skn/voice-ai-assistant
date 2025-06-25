@@ -4,6 +4,16 @@ import { useState, useRef, useEffect } from 'react'
 import VoiceOrb from './VoiceOrb'
 import { AVAILABLE_TOOLS, TOOL_HANDLERS } from '../config/tools'
 import { buildFinalSystemPrompt } from '../config/protected-prompt'
+import { 
+  DEFAULT_VOICE,
+  REALTIME_VOICES,
+  WEBRTC_CONFIG,
+  MICROPHONE_CONFIG,
+  ANALYSER_CONFIG,
+  OUTPUT_ANALYSER_CONFIG,
+  REALTIME_API_URLs,
+  type RealtimeVoiceId 
+} from '../config/realtime-config'
 
 interface VoiceControlsProps {
   systemPrompt: string
@@ -18,6 +28,7 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [selectedVoice, setSelectedVoice] = useState<RealtimeVoiceId>(DEFAULT_VOICE)
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const dataChannelRef = useRef<RTCDataChannel | null>(null)
@@ -31,10 +42,244 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
   const volumeHistoryRef = useRef<{ input: number[], output: number[] }>({ input: [], output: [] })
   const lastVolumeUpdateRef = useRef<number>(0)
 
+  // 🔧 НОВЫЕ REF'Ы ДЛЯ AUDIO RECOVERY SYSTEM
+  const healthCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const lastOutputDataRef = useRef<number>(0)
+  const audioRecoveryAttemptsRef = useRef<number>(0)
+  const maxRecoveryAttemptsRef = useRef<number>(3)
+
+  // 🎙️ ДОСТУПНЫЕ ГОЛОСА OpenAI Realtime API (из конфига)
+  const availableVoices = REALTIME_VOICES
+
+  // 🎯 1. AUDIOCTX RESILIENCE - критическая функция для предотвращения suspending
+  const ensureAudioContextActive = async (): Promise<boolean> => {
+    if (!audioContextRef.current) {
+      console.log('🔧 AudioContext не существует, пересоздаем...')
+      return false
+    }
+    
+    if (audioContextRef.current.state === 'suspended') {
+      try {
+        console.log('🔧 AudioContext suspended, возобновляем...')
+        await audioContextRef.current.resume()
+        console.log('✅ AudioContext успешно возобновлен')
+        return true
+      } catch (error) {
+        console.error('❌ Ошибка возобновления AudioContext:', error)
+        return false
+      }
+    }
+    
+    if (audioContextRef.current.state === 'closed') {
+      console.log('🔧 AudioContext закрыт, требуется пересоздание')
+      return false
+    }
+    
+    return audioContextRef.current.state === 'running'
+  }
+
+  // 🎯 2. HTML AUDIO ELEMENT RECOVERY - обработка прерываний воспроизведения
+  const setupAudioElementRecovery = (audioElement: HTMLAudioElement) => {
+    console.log('🔧 Настраиваем audio element recovery')
+    
+    // События, требующие восстановления
+    const recoveryEvents = ['waiting', 'stalled', 'suspend', 'error', 'emptied', 'pause']
+    
+    recoveryEvents.forEach(eventType => {
+      audioElement.addEventListener(eventType, handleAudioElementRecovery)
+    })
+
+    // Позитивные события для сброса счетчика попыток
+    const successEvents = ['playing', 'canplaythrough', 'loadeddata']
+    successEvents.forEach(eventType => {
+      audioElement.addEventListener(eventType, () => {
+        audioRecoveryAttemptsRef.current = 0
+      })
+    })
+  }
+
+  const handleAudioElementRecovery = async (event: Event) => {
+    const eventType = event.type
+    console.log(`🔧 Audio element recovery triggered: ${eventType}`)
+    
+    if (audioRecoveryAttemptsRef.current >= maxRecoveryAttemptsRef.current) {
+      console.log('⚠️ Максимальное количество попыток восстановления достигнуто')
+      return
+    }
+    
+    audioRecoveryAttemptsRef.current++
+    
+    if (!audioElementRef.current || !remoteStreamRef.current) {
+      console.log('❌ Audio element или remote stream отсутствуют')
+      return
+    }
+
+    try {
+      // Пытаемся восстановить в зависимости от типа события
+      switch (eventType) {
+        case 'waiting':
+        case 'stalled':
+          console.log('🔧 Попытка reload audio element...')
+          audioElementRef.current.load()
+          break
+          
+        case 'error':
+        case 'emptied':
+          console.log('🔧 Переустанавливаем srcObject...')
+          audioElementRef.current.srcObject = null
+          await new Promise(resolve => setTimeout(resolve, 100))
+          audioElementRef.current.srcObject = remoteStreamRef.current
+          break
+          
+        case 'suspend':
+          console.log('🔧 Попытка resume playback...')
+          if (audioElementRef.current.paused) {
+            await audioElementRef.current.play().catch(console.error)
+          }
+          break
+          
+        case 'pause':
+          // Только если это не был намеренный pause
+          if (isConnected && !isMuted) {
+            console.log('🔧 Непредвиденная пауза, возобновляем...')
+            await audioElementRef.current.play().catch(console.error)
+          }
+          break
+      }
+      
+      // Проверяем AudioContext после восстановления
+      await ensureAudioContextActive()
+      
+    } catch (error) {
+      console.error(`❌ Ошибка восстановления audio element (${eventType}):`, error)
+    }
+  }
+
+  // 🎯 3. MEDIASTREAM HEALTH CHECK - мониторинг качества потока
+  const performStreamHealthCheck = (): boolean => {
+    if (!remoteStreamRef.current) {
+      console.log('⚠️ Health check: remote stream отсутствует')
+      return false
+    }
+    
+    const audioTracks = remoteStreamRef.current.getAudioTracks()
+    if (audioTracks.length === 0) {
+      console.log('⚠️ Health check: нет audio tracks')
+      return false
+    }
+    
+    const activeTrack = audioTracks[0]
+    if (activeTrack.readyState !== 'live') {
+      console.log(`⚠️ Health check: track не live (${activeTrack.readyState})`)
+      return false
+    }
+    
+    if (activeTrack.muted) {
+      console.log('⚠️ Health check: track muted')
+      return false
+    }
+    
+    return true
+  }
+
+  // 🎯 4. ANALYSER DATA VALIDATION - проверка что данные поступают
+  const validateAnalyserData = (): boolean => {
+    if (!outputAnalyserRef.current) return false
+    
+    const bufferLength = outputAnalyserRef.current.frequencyBinCount
+    const dataArray = new Uint8Array(bufferLength)
+    outputAnalyserRef.current.getByteFrequencyData(dataArray)
+    
+    // Проверяем что данные не все нули (есть активность)
+    const hasData = dataArray.some(value => value > 0)
+    const currentTime = performance.now()
+    
+    if (hasData) {
+      lastOutputDataRef.current = currentTime
+      return true
+    }
+    
+    // Если данных нет больше 5 секунд, это проблема
+    const noDataDuration = currentTime - lastOutputDataRef.current
+    if (noDataDuration > 5000) {
+      console.log('⚠️ Analyser не получает данные уже 5+ секунд')
+      return false
+    }
+    
+    return true
+  }
+
+  // 🎯 5. COMPREHENSIVE HEALTH CHECK - общий мониторинг системы
+  const performComprehensiveHealthCheck = async () => {
+    if (!isConnected) return
+    
+    let needsRecovery = false
+    
+    // Проверяем AudioContext
+    if (!(await ensureAudioContextActive())) {
+      console.log('🔧 Health check: AudioContext needs recovery')
+      needsRecovery = true
+    }
+    
+    // Проверяем MediaStream
+    if (!performStreamHealthCheck()) {
+      console.log('🔧 Health check: MediaStream needs attention')
+      needsRecovery = true
+    }
+    
+    // Проверяем Analyser data flow
+    if (!validateAnalyserData()) {
+      console.log('🔧 Health check: Analyser data flow interrupted')
+      needsRecovery = true
+      
+      // Пытаемся переподключить output analyser
+      if (remoteStreamRef.current && audioContextRef.current) {
+        try {
+          const outputSource = audioContextRef.current.createMediaStreamSource(remoteStreamRef.current)
+          outputAnalyserRef.current = audioContextRef.current.createAnalyser()
+          outputAnalyserRef.current.fftSize = OUTPUT_ANALYSER_CONFIG.fftSize
+          outputAnalyserRef.current.smoothingTimeConstant = OUTPUT_ANALYSER_CONFIG.smoothingTimeConstant
+          outputAnalyserRef.current.minDecibels = OUTPUT_ANALYSER_CONFIG.minDecibels
+          outputAnalyserRef.current.maxDecibels = OUTPUT_ANALYSER_CONFIG.maxDecibels
+          outputSource.connect(outputAnalyserRef.current)
+          console.log('✅ Output analyser переподключен')
+        } catch (error) {
+          console.error('❌ Ошибка переподключения output analyser:', error)
+        }
+      }
+    }
+    
+    // Проверяем HTML Audio Element
+    if (audioElementRef.current) {
+      const audioElement = audioElementRef.current
+      
+      if (audioElement.error) {
+        console.log('🔧 Health check: Audio element has error:', audioElement.error)
+        needsRecovery = true
+      }
+      
+      if (audioElement.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
+        console.log('🔧 Health check: Audio element no source')
+        needsRecovery = true
+      }
+    }
+    
+    if (needsRecovery) {
+      console.log('🔧 Health check обнаружил проблемы, но продолжаем мониторинг')
+    }
+  }
+
   // Создаем Audio элемент для воспроизведения ответов ассистента
   useEffect(() => {
     audioElementRef.current = new Audio()
     audioElementRef.current.autoplay = true
+    
+    // 🔧 НОВОЕ: настраиваем audio recovery system
+    setupAudioElementRecovery(audioElementRef.current)
+    
+    // 🔧 НОВОЕ: запускаем health check каждые 3 секунды
+    healthCheckIntervalRef.current = setInterval(performComprehensiveHealthCheck, 3000)
+    
     return () => {
       if (audioElementRef.current) {
         audioElementRef.current.pause()
@@ -46,12 +291,23 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       if (audioContextRef.current) {
         audioContextRef.current.close()
       }
+      if (healthCheckIntervalRef.current) {
+        clearInterval(healthCheckIntervalRef.current)
+      }
     }
   }, [])
 
-  // Функция анализа громкости с шумоподавлением
-  const analyzeAudio = () => {
+  // Функция анализа громкости с шумоподавлением и audio recovery
+  const analyzeAudio = async () => {
+    // 🔧 НОВОЕ: проверяем AudioContext перед анализом
+    if (!(await ensureAudioContextActive())) {
+      console.log('⚠️ AudioContext не активен, пропускаем анализ')
+      animationFrameRef.current = requestAnimationFrame(analyzeAudio)
+      return
+    }
+    
     if (!inputAnalyserRef.current && !outputAnalyserRef.current) {
+      animationFrameRef.current = requestAnimationFrame(analyzeAudio)
       return
     }
 
@@ -181,16 +437,27 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         throw new Error('No token found in response');
       }
 
-      // Создаем WebRTC соединение
-      const pc = new RTCPeerConnection();
+      // Создаем WebRTC соединение с конфигурацией из конфига
+      const pc = new RTCPeerConnection(WEBRTC_CONFIG);
       
-      // Добавляем аудио трек
+      // 🔧 НОВОЕ: мониторинг WebRTC соединения
+      pc.addEventListener('connectionstatechange', () => {
+        console.log(`🔗 WebRTC connection state: ${pc.connectionState}`)
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.log('⚠️ WebRTC соединение потеряно, может потребоваться переподключение')
+        }
+      })
+      
+      pc.addEventListener('iceconnectionstatechange', () => {
+        console.log(`🧊 ICE connection state: ${pc.iceConnectionState}`)
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          console.log('⚠️ ICE соединение потеряно')
+        }
+      })
+      
+      // Добавляем аудио трек с настройками из конфига
       const ms = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
-          echoCancellation: true, 
-          noiseSuppression: true,
-          sampleRate: 24000 
-        } 
+        audio: MICROPHONE_CONFIG
       });
       pc.addTrack(ms.getTracks()[0], ms);
 
@@ -199,35 +466,69 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       const source = audioContextRef.current.createMediaStreamSource(ms);
       inputAnalyserRef.current = audioContextRef.current.createAnalyser();
       
-      // Оптимальные настройки для анализа речи
-      inputAnalyserRef.current.fftSize = 512;  // Больше точности
-      inputAnalyserRef.current.smoothingTimeConstant = 0.3;  // Сглаживание
-      inputAnalyserRef.current.minDecibels = -90;
-      inputAnalyserRef.current.maxDecibels = -10;
+      // Настройки анализа речи из конфига
+      inputAnalyserRef.current.fftSize = ANALYSER_CONFIG.fftSize;
+      inputAnalyserRef.current.smoothingTimeConstant = ANALYSER_CONFIG.smoothingTimeConstant;
+      inputAnalyserRef.current.minDecibels = ANALYSER_CONFIG.minDecibels;
+      inputAnalyserRef.current.maxDecibels = ANALYSER_CONFIG.maxDecibels;
       
       source.connect(inputAnalyserRef.current);
 
-      // Обработка входящих аудио
+      // Обработка входящих аудио с улучшенным мониторингом
       pc.ontrack = e => {
         remoteStreamRef.current = e.streams[0];
         console.log('🔊 Получен remote stream для анализа:', e.streams[0]);
         
-        if (audioElementRef.current) {
-          audioElementRef.current.srcObject = e.streams[0];
+        // 🔧 НОВОЕ: мониторинг MediaStream
+        const stream = e.streams[0];
+        const audioTracks = stream.getAudioTracks();
+        
+        if (audioTracks.length > 0) {
+          const track = audioTracks[0];
+          console.log(`🔊 Audio track: ${track.label}, state: ${track.readyState}`);
           
-                    // Настраиваем анализ исходящего аудио СРАЗУ через MediaStream
+          // Мониторим состояние track'а
+          track.addEventListener('ended', () => {
+            console.log('⚠️ Audio track ended unexpectedly');
+          });
+          
+          track.addEventListener('mute', () => {
+            console.log('⚠️ Audio track muted');
+          });
+          
+          track.addEventListener('unmute', () => {
+            console.log('✅ Audio track unmuted');
+          });
+        }
+        
+        // Мониторим состояние потока
+        stream.addEventListener('removetrack', (event) => {
+          console.log('⚠️ Track removed from stream:', event.track);
+        });
+        
+        stream.addEventListener('addtrack', (event) => {
+          console.log('✅ Track added to stream:', event.track);
+        });
+        
+        if (audioElementRef.current) {
+          audioElementRef.current.srcObject = stream;
+          
+          // 🔧 УЛУЧШЕНО: настраиваем анализ исходящего аудио с error handling
           if (audioContextRef.current) {
             try {
-              const outputSource = audioContextRef.current.createMediaStreamSource(e.streams[0]);
+              const outputSource = audioContextRef.current.createMediaStreamSource(stream);
               outputAnalyserRef.current = audioContextRef.current.createAnalyser();
               
-              // Настройки для анализа речи ассистента
-              outputAnalyserRef.current.fftSize = 512;
-              outputAnalyserRef.current.smoothingTimeConstant = 0.4;
-              outputAnalyserRef.current.minDecibels = -90;
-              outputAnalyserRef.current.maxDecibels = -10;
+              // Настройки для анализа речи ассистента из конфига
+              outputAnalyserRef.current.fftSize = OUTPUT_ANALYSER_CONFIG.fftSize;
+              outputAnalyserRef.current.smoothingTimeConstant = OUTPUT_ANALYSER_CONFIG.smoothingTimeConstant;
+              outputAnalyserRef.current.minDecibels = OUTPUT_ANALYSER_CONFIG.minDecibels;
+              outputAnalyserRef.current.maxDecibels = OUTPUT_ANALYSER_CONFIG.maxDecibels;
               
               outputSource.connect(outputAnalyserRef.current);
+              
+              // Инициализируем таймер для мониторинга данных
+              lastOutputDataRef.current = performance.now();
               
               console.log('🔊 Output анализ настроен через MediaStream');
             } catch (error) {
@@ -264,7 +565,7 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
             type: 'session.update',
             session: {
               instructions: finalPrompt,
-              voice: 'alloy',
+              voice: selectedVoice, // 🎙️ Используем выбранный голос
               input_audio_format: 'pcm16',
               output_audio_format: 'pcm16',
               turn_detection: {
@@ -300,8 +601,8 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // Подключаемся к OpenAI Realtime API (правильный URL!)
-      const sdpResponse = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17', {
+      // Подключаемся к OpenAI Realtime API (URL из конфига)
+      const sdpResponse = await fetch(REALTIME_API_URLs.websocket, {
         method: 'POST',
         body: offer.sdp,
         headers: {

@@ -65,10 +65,10 @@ export default function ChatContainer({ className = '' }: ChatContainerProps) {
             systemPrompt={systemPrompt}
             onVoiceStateChange={handleVoiceStateChange}
             onVolumeChange={handleVolumeChange}
-            voiceState={voiceState}
-            inputVolume={inputVolume}
-            outputVolume={outputVolume}
-          />
+              voiceState={voiceState} 
+              inputVolume={inputVolume}
+              outputVolume={outputVolume}
+            />
         </div>
       </main>
 

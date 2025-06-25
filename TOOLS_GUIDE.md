@@ -4,6 +4,7 @@
 
 ## Расположение файлов
 
+- `app/config/realtime-config.ts` - 🆕 Центральный конфиг Realtime API
 - `app/config/system-prompt.ts` - Системные промпты
 - `app/config/protected-prompt.ts` - Система безопасности
 - `app/config/tools.ts` - Определение Tools

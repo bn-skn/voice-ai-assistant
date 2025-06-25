@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DEFAULT_SYSTEM_PROMPT } from '../../config/system-prompt'
 import { buildFinalSystemPrompt } from '../../config/protected-prompt'
+import { 
+  REALTIME_MODEL, 
+  DEFAULT_VOICE, 
+  REALTIME_API_URLs 
+} from '../../config/realtime-config'
 
 /**
  * API Route для создания ephemeral token для OpenAI Realtime API
@@ -18,15 +23,15 @@ export async function POST(_req: NextRequest) {
     }
 
     // Создаем ephemeral token через OpenAI Realtime API
-    const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    const response = await fetch(REALTIME_API_URLs.session, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-realtime-preview-2024-12-17',
-        voice: 'alloy',
+        model: REALTIME_MODEL,
+        voice: DEFAULT_VOICE,
         instructions: buildFinalSystemPrompt(DEFAULT_SYSTEM_PROMPT),
         modalities: ['text', 'audio'],
         input_audio_format: 'pcm16',
@@ -44,7 +49,7 @@ export async function POST(_req: NextRequest) {
         { 
           error: `OpenAI API ошибка: ${response.status}`,
           details: errorText,
-          model: 'gpt-4o-realtime-preview-2024-12-17'
+          model: REALTIME_MODEL
         },
         { status: response.status }
       )
