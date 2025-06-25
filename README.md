@@ -94,7 +94,6 @@ voice-ai-assistant/
 │   │   ├── ChatContainer.tsx # Основной контейнер
 │   │   ├── VoiceControls.tsx # Голосовые элементы управления + Audio Recovery
 │   │   ├── VoiceOrb.tsx     # 3D анимированный голосовой индикатор
-│   │   ├── MessageList.tsx   # Компонент для будущего функционала
 │   │   └── SettingsModal.tsx # Модальное окно настроек
 │   ├── config/              # Конфигурация
 │   │   ├── realtime-config.ts # 🆕 Центральный конфиг Realtime API

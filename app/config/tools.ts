@@ -155,7 +155,7 @@ export const TOOL_HANDLERS = {
 
   search_web: async (args: { query: string; location?: string }) => {
     try {
-      console.log('🔍 Starting web search:', args);
+
       
       // Используем наш API endpoint для веб-поиска
       const response = await fetch('/api/search', {
@@ -175,7 +175,7 @@ export const TOOL_HANDLERS = {
       }
 
       const result = await response.json();
-      console.log('🔍 Search completed successfully');
+
 
       return result;
     } catch (error) {

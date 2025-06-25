@@ -56,7 +56,7 @@ export async function POST(_req: NextRequest) {
     }
 
     const data = await response.json()
-    console.log('Ephemeral token создан успешно')
+
     
     return NextResponse.json(data)
   } catch (error: unknown) {

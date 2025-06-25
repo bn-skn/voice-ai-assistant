@@ -355,10 +355,7 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       // Применяем экспоненциальное сглаживание
       const finalVolume = smoothedVolume * SMOOTHING_FACTOR + (volumeHistoryRef.current.input[volumeHistoryRef.current.input.length - 1] || 0) * (1 - SMOOTHING_FACTOR)
       
-      // Дебаг информация (только при значительных изменениях)
-      if (Math.abs(finalVolume - (volumeHistoryRef.current.input[volumeHistoryRef.current.input.length - 2] || 0)) > 0.1) {
-        console.log(`🎤 Input volume: ${(finalVolume * 100).toFixed(1)}%`);
-      }
+      // Дебаг информация удалена для производительности
       
       onVolumeChange(finalVolume, 'input')
     }
@@ -373,10 +370,7 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       const rms = Math.sqrt(dataArray.reduce((sum, value) => sum + value * value, 0) / bufferLength)
       let volume = Math.min(rms / 128, 1)
       
-      // ОТЛАДКА: всегда показываем raw данные для output
-      if (rms > 5) {
-        // Тихий анализ громкости output
-      }
+      // Output анализ оптимизирован
       
       // Для речи ассистента используем более низкий порог
       const OUTPUT_NOISE_GATE = 0.08
@@ -394,10 +388,7 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       const smoothedVolume = volumeHistoryRef.current.output.reduce((sum, v) => sum + v, 0) / volumeHistoryRef.current.output.length
       const finalVolume = smoothedVolume * SMOOTHING_FACTOR + (volumeHistoryRef.current.output[volumeHistoryRef.current.output.length - 1] || 0) * (1 - SMOOTHING_FACTOR)
       
-      // Дебаг информация для выходного сигнала - ВСЕГДА показываем
-      if (finalVolume > 0.05) {
-        // Тихий анализ - лог убран
-      }
+      // Output volume анализ оптимизирован
       
       // Убрали логику переключения состояний - остается только talking
       

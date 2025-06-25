@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log('🔍 Web search request:', { query, location });
+
 
     // Используем ChatGPT Search через Chat Completions API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log('🔍 Search completed successfully');
+    
 
     return NextResponse.json({
       success: true,
