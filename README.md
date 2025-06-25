@@ -26,7 +26,7 @@
 
 1. **Клонируйте репозиторий**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/bn-skn/voice-ai-assistant
    cd voice-ai-assistant
    ```
 
