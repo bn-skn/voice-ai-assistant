@@ -53,3 +53,8 @@ ehthumbs.db
 
 # Logs
 *.log
+/logs/
+logs/
+
+# Docker
+docker-compose.yml

@@ -153,41 +153,24 @@ export const TOOL_HANDLERS = {
     }
   },
 
-  search_web: async (args: { query: string; location?: string }) => {
+  search_web: async (args: { query: string }) => {
     try {
-
-      
-      // Используем наш API endpoint для веб-поиска
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          query: args.query,
-          location: args.location
-        })
+        body: JSON.stringify({ query: args.query }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Search API error: ${response.status}`);
+        return `Извините, не удалось найти информацию по запросу "${args.query}". Попробуйте переформулировать запрос.`;
       }
 
-      const result = await response.json();
-
-
-      return result;
+      const data = await response.json();
+      return data.result || `Не найдено результатов по запросу "${args.query}"`;
     } catch (error) {
-      console.error('🔍 Web search error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown search error',
-        data: {
-          query: args.query,
-          message: "Ошибка при выполнении веб-поиска. Попробуйте позже."
-        }
-      };
+      return `Извините, произошла ошибка при поиске информации по запросу "${args.query}".`;
     }
   }
 };

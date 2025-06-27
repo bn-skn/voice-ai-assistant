@@ -4,7 +4,7 @@
   "description": "Продвинутое веб-приложение голосового ИИ-ассистента на базе OpenAI Realtime API с поддержкой ChatGPT Web Search и системой безопасности",
   "keywords": [
     "openai",
-    "realtime-api", 
+    "realtime-api",
     "voice-assistant",
     "chatgpt-search",
     "nextjs",
@@ -35,13 +35,33 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "logs": "./scripts/log-viewer.sh",
+    "logs:live": "./scripts/log-viewer.sh live",
+    "logs:errors": "./scripts/log-viewer.sh errors",
+    "logs:sessions": "./scripts/log-viewer.sh sessions",
+    "logs:api": "./scripts/log-viewer.sh api",
+    "logs:stats": "./scripts/log-viewer.sh stats",
+    "logs:clean": "./scripts/log-viewer.sh clean",
+    "docker": "./scripts/docker-ops.sh",
+    "docker:build": "./scripts/docker-ops.sh build",
+    "docker:start": "./scripts/docker-ops.sh start",
+    "docker:stop": "./scripts/docker-ops.sh stop",
+    "docker:restart": "./scripts/docker-ops.sh restart",
+    "docker:status": "./scripts/docker-ops.sh status",
+    "docker:logs": "./scripts/docker-ops.sh logs",
+    "docker:logs:follow": "./scripts/docker-ops.sh logs follow",
+    "docker:cleanup": "./scripts/docker-ops.sh cleanup",
+    "docker:rebuild": "./scripts/docker-ops.sh rebuild"
   },
   "dependencies": {
+    "@types/winston": "^2.4.4",
     "next": "15.3.4",
     "openai": "^5.5.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

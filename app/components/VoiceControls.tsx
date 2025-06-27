@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import VoiceOrb from './VoiceOrb'
 import { AVAILABLE_TOOLS, TOOL_HANDLERS } from '../config/tools'
 import { buildFinalSystemPrompt } from '../config/protected-prompt'
@@ -22,13 +22,27 @@ interface VoiceControlsProps {
   voiceState: 'disconnected' | 'connecting' | 'talking'
   inputVolume: number
   outputVolume: number
+  notifications: ReturnType<typeof import('../hooks/useNotifications').useNotifications>
 }
 
-export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolumeChange, voiceState, inputVolume, outputVolume }: VoiceControlsProps) {
+export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolumeChange, voiceState, inputVolume, outputVolume, notifications }: VoiceControlsProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [selectedVoice, setSelectedVoice] = useState<RealtimeVoiceId>(DEFAULT_VOICE)
+  
+  // === НОВЫЕ СОСТОЯНИЯ ДЛЯ УПРАВЛЕНИЯ СЕССИЯМИ ===
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
+  const [isInQueue, setIsInQueue] = useState(false)
+  const [queuePosition, setQueuePosition] = useState<number | null>(null)
+  const [sessionMessage, setSessionMessage] = useState<string>('')
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null)
+  const [isAttemptingFromQueue, setIsAttemptingFromQueue] = useState(false) // Флаг для optimistic UI
+  
+  // === POLLING ДЛЯ ОЧЕРЕДИ ===
+  const queueCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const queueCheckErrorCountRef = useRef<number>(0) // Счетчик ошибок для backoff
   
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const dataChannelRef = useRef<RTCDataChannel | null>(null)
@@ -47,6 +61,175 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
   const lastOutputDataRef = useRef<number>(0)
   const audioRecoveryAttemptsRef = useRef<number>(0)
   const maxRecoveryAttemptsRef = useRef<number>(3)
+  
+  // === ТАЙМЕР ОБНОВЛЕНИЯ ВРЕМЕНИ СЕССИИ ===
+  useEffect(() => {
+    if (!sessionStartTime || !timeRemaining) return;
+
+    const interval = setInterval(() => {
+      const elapsedMinutes = Math.floor((Date.now() - sessionStartTime) / (1000 * 60));
+      const remainingMinutes = Math.max(0, timeRemaining - elapsedMinutes);
+      
+      if (remainingMinutes <= 0) {
+        // Время истекло - принудительно отключаемся
+        notifications.showTimeExpired();
+        disconnect();
+        return;
+      }
+      
+      // Обновляем отображение времени
+      setTimeRemaining(remainingMinutes);
+      
+      // Предупреждения о времени
+      if (remainingMinutes === 5) {
+        notifications.showTimeWarning(5);
+      } else if (remainingMinutes === 2) {
+        notifications.showTimeWarning(2);
+      } else if (remainingMinutes === 1) {
+        notifications.showFinalTimeWarning(60);
+      }
+    }, 60000); // Проверяем каждую минуту
+
+    return () => clearInterval(interval);
+  }, [sessionStartTime, timeRemaining]);
+
+    // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ОЧЕРЕДИ ===
+  const shouldUseExtraDelay = useCallback((stats: { queueLength: number; timeSinceLastSessionEnd: number }) => {
+    const isEmptyQueue = stats.queueLength === 0;
+    const isRecentEnd = stats.timeSinceLastSessionEnd < 2000; // Менее 2 секунд назад
+    
+    return isEmptyQueue || isRecentEnd;
+  }, []);
+
+  const activateOptimisticUI = useCallback((needsExtraDelay: boolean) => {
+    // 🚀 OPTIMISTIC UI: Мгновенно переходим в состояние попытки подключения
+    setIsAttemptingFromQueue(true);
+    setIsInQueue(false);
+    setQueuePosition(null);
+    
+    // Останавливаем polling немедленно
+    if (queueCheckIntervalRef.current) {
+      clearInterval(queueCheckIntervalRef.current);
+      queueCheckIntervalRef.current = null;
+    }
+    
+    // Показываем уведомление
+    const message = needsExtraDelay 
+      ? 'Место освободилось. Синхронизируемся с сервером...' 
+      : 'Место освободилось. Подключаемся...';
+    
+    notifications.showSuccess(
+      'Ваша очередь подошла!',
+      message,
+      needsExtraDelay ? 3500 : 2000
+    );
+  }, [notifications]);
+
+  const resetToQueue = useCallback((reason: string) => {
+    setIsAttemptingFromQueue(false);
+    setIsInQueue(true);
+    setQueuePosition(1);
+  }, []);
+
+  const attemptConnection = useCallback(async () => {
+    try {
+      // Финальная проверка статистики перед подключением
+      const finalCheckResponse = await fetch('/api/session?action=stats');
+      const finalStats = await finalCheckResponse.json();
+      
+      if (finalStats.activeSessions < 1 && !isConnected && !isConnecting) {
+        setIsAttemptingFromQueue(false);
+        connectToRealtimeAPI();
+      } else {
+        resetToQueue('final_check_failed');
+      }
+    } catch (finalError) {
+      console.error('❌ Ошибка финальной проверки:', finalError);
+      resetToQueue('final_check_error');
+    }
+  }, [isConnected, isConnecting, resetToQueue]);
+
+  // === ОСНОВНАЯ ПРОВЕРКА СТАТУСА ОЧЕРЕДИ ===
+  const checkQueueStatus = useCallback(async () => {
+    if (!isInQueue || isConnecting || isAttemptingFromQueue) return;
+
+    try {
+      const response = await fetch('/api/session?action=stats');
+      const stats = await response.json();
+      
+      // Если место освободилось
+      if (stats.activeSessions < 1) {
+        
+        const needsExtraDelay = shouldUseExtraDelay(stats);
+        
+        activateOptimisticUI(needsExtraDelay);
+        
+        // Динамическая задержка
+        const delay = needsExtraDelay ? 4000 : 2500;
+        
+        setTimeout(attemptConnection, delay);
+      } else {
+        // Сбрасываем счетчик ошибок при успешной проверке
+        queueCheckErrorCountRef.current = 0;
+      }
+    } catch (error) {
+      console.error('❌ Ошибка проверки очереди:', error);
+      queueCheckErrorCountRef.current += 1;
+      
+      // Exponential backoff: если много ошибок, увеличиваем интервал
+      if (queueCheckErrorCountRef.current >= 3) {
+        
+        // Перезапускаем polling с увеличенным интервалом
+        if (queueCheckIntervalRef.current) {
+          clearInterval(queueCheckIntervalRef.current);
+          const backoffInterval = Math.min(10000, 3000 * Math.pow(1.5, queueCheckErrorCountRef.current - 3)); // Максимум 10 секунд
+          queueCheckIntervalRef.current = setInterval(checkQueueStatus, backoffInterval);
+        }
+      }
+    }
+  }, [isInQueue, isConnecting, isAttemptingFromQueue, shouldUseExtraDelay, activateOptimisticUI, attemptConnection]);
+
+  // Запускаем проверку очереди когда пользователь попадает в очередь
+  useEffect(() => {
+    if (isInQueue && !isAttemptingFromQueue) {
+      queueCheckIntervalRef.current = setInterval(checkQueueStatus, 3000); // Вернули к 3 секундам для меньшей нагрузки
+    } else if (queueCheckIntervalRef.current) {
+      clearInterval(queueCheckIntervalRef.current);
+      queueCheckIntervalRef.current = null;
+    }
+
+    return () => {
+      if (queueCheckIntervalRef.current) {
+        clearInterval(queueCheckIntervalRef.current);
+        queueCheckIntervalRef.current = null;
+      }
+    };
+  }, [isInQueue, isAttemptingFromQueue, checkQueueStatus]);
+
+  // === ОБРАБОТКА ЗАКРЫТИЯ ВКЛАДКИ ===
+  useEffect(() => {
+    const handleBeforeUnload = async () => {
+      // Если пользователь подключен, уведомляем сервер о завершении сессии
+      if (sessionId || isConnected) {
+        
+        // Используем sendBeacon для гарантированной отправки даже при закрытии вкладки
+        if (sessionId) {
+          const url = `/api/session?action=end&sessionId=${sessionId}`;
+          navigator.sendBeacon(url);
+        }
+      }
+    };
+
+    // Добавляем обработчики
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('unload', handleBeforeUnload);
+
+    return () => {
+      // Убираем обработчики при размонтировании
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleBeforeUnload);
+    };
+  }, [sessionId, isConnected]);
 
   // 🎙️ ДОСТУПНЫЕ ГОЛОСА OpenAI Realtime API (из конфига)
   const availableVoices = REALTIME_VOICES
@@ -54,15 +237,12 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
   // 🎯 1. AUDIOCTX RESILIENCE - критическая функция для предотвращения suspending
   const ensureAudioContextActive = async (): Promise<boolean> => {
     if (!audioContextRef.current) {
-      console.log('🔧 AudioContext не существует, пересоздаем...')
       return false
     }
     
     if (audioContextRef.current.state === 'suspended') {
       try {
-        console.log('🔧 AudioContext suspended, возобновляем...')
         await audioContextRef.current.resume()
-        console.log('✅ AudioContext успешно возобновлен')
         return true
       } catch (error) {
         console.error('❌ Ошибка возобновления AudioContext:', error)
@@ -71,7 +251,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
     }
     
     if (audioContextRef.current.state === 'closed') {
-      console.log('🔧 AudioContext закрыт, требуется пересоздание')
       return false
     }
     
@@ -80,7 +259,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
 
   // 🎯 2. HTML AUDIO ELEMENT RECOVERY - обработка прерываний воспроизведения
   const setupAudioElementRecovery = (audioElement: HTMLAudioElement) => {
-    console.log('🔧 Настраиваем audio element recovery')
     
     // События, требующие восстановления
     const recoveryEvents = ['waiting', 'stalled', 'suspend', 'error', 'emptied', 'pause']
@@ -100,17 +278,14 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
 
   const handleAudioElementRecovery = async (event: Event) => {
     const eventType = event.type
-    console.log(`🔧 Audio element recovery triggered: ${eventType}`)
     
     if (audioRecoveryAttemptsRef.current >= maxRecoveryAttemptsRef.current) {
-      console.log('⚠️ Максимальное количество попыток восстановления достигнуто')
       return
     }
     
     audioRecoveryAttemptsRef.current++
     
     if (!audioElementRef.current || !remoteStreamRef.current) {
-      console.log('❌ Audio element или remote stream отсутствуют')
       return
     }
 
@@ -119,20 +294,17 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       switch (eventType) {
         case 'waiting':
         case 'stalled':
-          console.log('🔧 Попытка reload audio element...')
           audioElementRef.current.load()
           break
           
         case 'error':
         case 'emptied':
-          console.log('🔧 Переустанавливаем srcObject...')
           audioElementRef.current.srcObject = null
           await new Promise(resolve => setTimeout(resolve, 100))
           audioElementRef.current.srcObject = remoteStreamRef.current
           break
           
         case 'suspend':
-          console.log('🔧 Попытка resume playback...')
           if (audioElementRef.current.paused) {
             await audioElementRef.current.play().catch(console.error)
           }
@@ -141,7 +313,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         case 'pause':
           // Только если это не был намеренный pause
           if (isConnected && !isMuted) {
-            console.log('🔧 Непредвиденная пауза, возобновляем...')
             await audioElementRef.current.play().catch(console.error)
           }
           break
@@ -158,24 +329,20 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
   // 🎯 3. MEDIASTREAM HEALTH CHECK - мониторинг качества потока
   const performStreamHealthCheck = (): boolean => {
     if (!remoteStreamRef.current) {
-      console.log('⚠️ Health check: remote stream отсутствует')
       return false
     }
     
     const audioTracks = remoteStreamRef.current.getAudioTracks()
     if (audioTracks.length === 0) {
-      console.log('⚠️ Health check: нет audio tracks')
       return false
     }
     
     const activeTrack = audioTracks[0]
     if (activeTrack.readyState !== 'live') {
-      console.log(`⚠️ Health check: track не live (${activeTrack.readyState})`)
       return false
     }
     
     if (activeTrack.muted) {
-      console.log('⚠️ Health check: track muted')
       return false
     }
     
@@ -202,7 +369,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
     // Если данных нет больше 5 секунд, это проблема
     const noDataDuration = currentTime - lastOutputDataRef.current
     if (noDataDuration > 5000) {
-      console.log('⚠️ Analyser не получает данные уже 5+ секунд')
       return false
     }
     
@@ -217,19 +383,16 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
     
     // Проверяем AudioContext
     if (!(await ensureAudioContextActive())) {
-      console.log('🔧 Health check: AudioContext needs recovery')
       needsRecovery = true
     }
     
     // Проверяем MediaStream
     if (!performStreamHealthCheck()) {
-      console.log('🔧 Health check: MediaStream needs attention')
       needsRecovery = true
     }
     
     // Проверяем Analyser data flow
     if (!validateAnalyserData()) {
-      console.log('🔧 Health check: Analyser data flow interrupted')
       needsRecovery = true
       
       // Пытаемся переподключить output analyser
@@ -242,7 +405,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
           outputAnalyserRef.current.minDecibels = OUTPUT_ANALYSER_CONFIG.minDecibels
           outputAnalyserRef.current.maxDecibels = OUTPUT_ANALYSER_CONFIG.maxDecibels
           outputSource.connect(outputAnalyserRef.current)
-          console.log('✅ Output analyser переподключен')
         } catch (error) {
           console.error('❌ Ошибка переподключения output analyser:', error)
         }
@@ -254,18 +416,12 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       const audioElement = audioElementRef.current
       
       if (audioElement.error) {
-        console.log('🔧 Health check: Audio element has error:', audioElement.error)
         needsRecovery = true
       }
       
       if (audioElement.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
-        console.log('🔧 Health check: Audio element no source')
         needsRecovery = true
       }
-    }
-    
-    if (needsRecovery) {
-      console.log('🔧 Health check обнаружил проблемы, но продолжаем мониторинг')
     }
   }
 
@@ -301,7 +457,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
   const analyzeAudio = async () => {
     // 🔧 НОВОЕ: проверяем AudioContext перед анализом
     if (!(await ensureAudioContextActive())) {
-      console.log('⚠️ AudioContext не активен, пропускаем анализ')
       animationFrameRef.current = requestAnimationFrame(analyzeAudio)
       return
     }
@@ -402,10 +557,26 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
     if (isConnecting || isConnected) return;
     
     setIsConnecting(true);
+    setIsInQueue(false);
+    setQueuePosition(null);
+    setSessionMessage('');
+    setIsAttemptingFromQueue(false); // Сбрасываем optimistic UI флаг
     onVoiceStateChange('connecting');
 
+    // Останавливаем polling если он еще работает
+    if (queueCheckIntervalRef.current) {
+      clearInterval(queueCheckIntervalRef.current);
+      queueCheckIntervalRef.current = null;
+    }
+    
+    // Останавливаем polling если он еще работает
+    if (queueCheckIntervalRef.current) {
+      clearInterval(queueCheckIntervalRef.current);
+      queueCheckIntervalRef.current = null;
+    }
+
     try {
-      // Получаем ephemeral token
+      // === ЗАПРОС НА ПОДКЛЮЧЕНИЕ С ПРОВЕРКОЙ ОГРАНИЧЕНИЙ ===
       const response = await fetch('/api/session', {
         method: 'POST',
         headers: {
@@ -414,18 +585,55 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         body: JSON.stringify({ systemPrompt }),
       });
 
+      const tokenData = await response.json();
+
+      // === ОБРАБОТКА ОГРАНИЧЕНИЙ СЕССИИ ===
+      if (response.status === 429) {
+        // Слишком много пользователей - попали в очередь
+        const wasOptimisticAttempt = isAttemptingFromQueue;
+        
+        setIsConnecting(false);
+        setIsAttemptingFromQueue(false); // Сбрасываем флаг optimistic UI
+        
+        // Устанавливаем состояние очереди
+        setIsInQueue(true);
+        setQueuePosition(tokenData.queuePosition || 1);
+        setSessionMessage(tokenData.message || 'Ожидание в очереди...');
+        onVoiceStateChange('disconnected');
+        
+        // Выбираем подходящее уведомление
+        if (!wasOptimisticAttempt) {
+          // Новая попытка подключения
+          notifications.showQueue(tokenData.queuePosition || 1, tokenData.stats);
+        } else {
+          // Неудачная optimistic попытка
+          notifications.showInfo(
+            'Попробуем еще раз',
+            'Место все еще занято. Ожидаем в очереди...',
+            1500
+          );
+        }
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const tokenData = await response.json();
-      console.log('Token response:', tokenData);
-      
+      // === ИЗВЛЕКАЕМ ТОКЕН И ИНФОРМАЦИЮ О СЕССИИ ===
       const token = tokenData.client_secret?.value || tokenData.client_secret || tokenData.token || tokenData.access_token;
       
       if (!token) {
-        console.error('Token structure:', tokenData);
+
         throw new Error('No token found in response');
+      }
+
+      // Сохраняем информацию о сессии
+      if (tokenData.sessionInfo) {
+        setSessionId(tokenData.sessionInfo.sessionId);
+        setTimeRemaining(tokenData.sessionInfo.timeLimit);
+        setSessionMessage(tokenData.sessionInfo.message);
+        setSessionStartTime(Date.now());
       }
 
       // Создаем WebRTC соединение с конфигурацией из конфига
@@ -433,16 +641,14 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       
       // 🔧 НОВОЕ: мониторинг WebRTC соединения
       pc.addEventListener('connectionstatechange', () => {
-        console.log(`🔗 WebRTC connection state: ${pc.connectionState}`)
         if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          console.log('⚠️ WebRTC соединение потеряно, может потребоваться переподключение')
+
         }
       })
       
       pc.addEventListener('iceconnectionstatechange', () => {
-        console.log(`🧊 ICE connection state: ${pc.iceConnectionState}`)
         if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-          console.log('⚠️ ICE соединение потеряно')
+
         }
       })
       
@@ -468,7 +674,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       // Обработка входящих аудио с улучшенным мониторингом
       pc.ontrack = e => {
         remoteStreamRef.current = e.streams[0];
-        console.log('🔊 Получен remote stream для анализа:', e.streams[0]);
         
         // 🔧 НОВОЕ: мониторинг MediaStream
         const stream = e.streams[0];
@@ -476,29 +681,28 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         
         if (audioTracks.length > 0) {
           const track = audioTracks[0];
-          console.log(`🔊 Audio track: ${track.label}, state: ${track.readyState}`);
           
           // Мониторим состояние track'а
           track.addEventListener('ended', () => {
-            console.log('⚠️ Audio track ended unexpectedly');
+
           });
           
           track.addEventListener('mute', () => {
-            console.log('⚠️ Audio track muted');
+
           });
           
           track.addEventListener('unmute', () => {
-            console.log('✅ Audio track unmuted');
+
           });
         }
         
         // Мониторим состояние потока
         stream.addEventListener('removetrack', (event) => {
-          console.log('⚠️ Track removed from stream:', event.track);
+
         });
         
         stream.addEventListener('addtrack', (event) => {
-          console.log('✅ Track added to stream:', event.track);
+
         });
         
         if (audioElementRef.current) {
@@ -520,8 +724,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
               
               // Инициализируем таймер для мониторинга данных
               lastOutputDataRef.current = performance.now();
-              
-              console.log('🔊 Output анализ настроен через MediaStream');
             } catch (error) {
               console.error('🔊 Ошибка настройки output анализа:', error);
             }
@@ -530,16 +732,16 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       };
 
       // Настраиваем DataChannel listeners ПЕРЕД offer/answer процессом
-      console.log('🔄 Ожидаем DataChannel от OpenAI...');
+      
       pc.addEventListener('datachannel', (event) => {
         const dataChannel = event.channel;
         dataChannelRef.current = dataChannel;
-        console.log('📡 ✅ DataChannel получен от OpenAI:', dataChannel.label, dataChannel.readyState);
+        
 
         dataChannel.addEventListener('message', (event) => {
           try {
             const realtimeEvent = JSON.parse(event.data);
-            console.log('📡 🎯 VAD СОБЫТИЕ от OpenAI:', realtimeEvent.type, realtimeEvent);
+            
             handleRealtimeEvent(realtimeEvent);
             // Тихая работа - отладочные логи убраны
           } catch (error) {
@@ -548,7 +750,7 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         });
 
         dataChannel.addEventListener('open', () => {
-          console.log('✅ DataChannel открыт - отправляем настройки VAD');
+          
           
           // Отправляем начальные настройки сессии с VAD и Tools
           const finalPrompt = buildFinalSystemPrompt(systemPrompt);
@@ -569,11 +771,11 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
             }
           };
           
-          console.log('📡 Отправляем настройки VAD:', sessionUpdate);
+          
           
           try {
             dataChannel.send(JSON.stringify(sessionUpdate));
-            console.log('✅ Настройки VAD отправлены успешно');
+            
           } catch (error) {
             console.error('❌ Ошибка отправки настроек VAD:', error);
           }
@@ -584,7 +786,7 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         });
 
         dataChannel.addEventListener('close', () => {
-          console.log('📡 DataChannel закрыт');
+          
         });
       });
 
@@ -617,23 +819,32 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       setIsConnected(true);
       onVoiceStateChange('talking');
 
+      // Показываем уведомление о начале сессии ПОСЛЕ установки состояний UI
+      if (tokenData.sessionInfo?.timeLimit) {
+        notifications.showSessionStarted(tokenData.sessionInfo.timeLimit);
+      }
+
       // Запускаем анализ громкости
       analyzeAudio();
 
       // Проверяем статус DataChannel через 3 секунды
       setTimeout(() => {
         const channelStatus = dataChannelRef.current?.readyState || 'not_created';
-        console.log('🔍 DataChannel статус через 3 сек:', channelStatus);
+        
         if (channelStatus !== 'open') {
-          console.log('⚠️ DataChannel не работает, используем FALLBACK на анализ громкости');
+ 
         }
       }, 3000);
 
-      console.log('Successfully connected to OpenAI Realtime API');
+      
     } catch (error) {
       console.error('Error connecting to Realtime API:', error);
-      alert('Ошибка подключения к API. Проверьте консоль для деталей.');
+      notifications.showError(
+        'Ошибка подключения',
+        'Не удалось подключиться к голосовому ассистенту. Проверьте подключение к интернету и попробуйте снова.'
+      );
       setIsConnecting(false);
+      setIsAttemptingFromQueue(false); // Сбрасываем optimistic UI флаг при ошибке
       onVoiceStateChange('disconnected');
     }
   };
@@ -641,7 +852,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
   // Обработка вызовов функций (tools)
   const handleToolCall = async (event: { name: string; call_id: string; arguments: string }) => {
     const { name, call_id, arguments: args } = event;
-    console.log('🔧 Tool call:', name, 'with args:', args);
     
     try {
       // Находим обработчик функции
@@ -652,7 +862,6 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
       
       // Выполняем функцию
       const result = await handler(JSON.parse(args));
-      console.log('🔧 Tool result:', result);
       
       // Отправляем результат обратно в OpenAI
       if (dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
@@ -666,14 +875,12 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         };
         
         dataChannelRef.current.send(JSON.stringify(toolResponse));
-        console.log('🔧 Tool response sent:', toolResponse);
         
         // Запрашиваем новый ответ от модели
         const createResponse = {
           type: 'response.create'
         };
         dataChannelRef.current.send(JSON.stringify(createResponse));
-        console.log('🔧 Requested new response from model');
       }
     } catch (error) {
       console.error('🔧 Tool execution error:', error);
@@ -693,67 +900,67 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         };
         
         dataChannelRef.current.send(JSON.stringify(errorResponse));
-        console.log('🔧 Tool error response sent:', errorResponse);
       }
     }
   };
 
   const handleRealtimeEvent = (event: { type: string; [key: string]: unknown }) => {
-    console.log('🎪 handleRealtimeEvent ВЫЗВАН:', event.type);
     switch (event.type) {
       case 'session.created':
-        console.log('🔄 Сессия создана:', event.session);
         break;
         
       case 'conversation.item.created':
-        console.log('💬 Элемент беседы создан:', event.item);
         break;
         
       case 'response.created':
-        console.log('🎯 Ответ создан:', event.response);
         break;
         
       case 'response.output_item.added':
-        console.log('📤 Выходной элемент добавлен:', event.item);
         break;
         
       case 'response.audio.delta':
-        console.log('🎵 VAD: ИИ начал говорить - аудио дельта');
         break;
         
       case 'response.audio.done':
-        console.log('🎵 VAD: ИИ закончил говорить - аудио завершено');
         break;
         
       case 'input_audio_buffer.speech_started':
-        console.log('🎤 VAD: Пользователь начал говорить');
         break;
         
       case 'input_audio_buffer.speech_stopped':
-        console.log('🎤 VAD: Пользователь закончил говорить');
         break;
         
       case 'response.done':
-        console.log('🏁 VAD: Ответ завершен:', event.response);
         break;
         
       // === ОБРАБОТКА FUNCTION CALLS ===
       case 'response.function_call_arguments.delta':
-        console.log('🔧 Tool call arguments delta:', event);
         break;
         
       case 'response.function_call_arguments.done':
-        console.log('🔧 Tool call arguments ready:', event);
         handleToolCall(event as unknown as { name: string; call_id: string; arguments: string });
         break;
         
       default:
-        console.log('📨 Необработанное событие:', event.type);
         break;
     }
   };
 
-  const disconnect = () => {
+  const disconnect = async () => {
+    
+    
+    // === УВЕДОМЛЯЕМ СЕРВЕР О ЗАВЕРШЕНИИ СЕССИИ ===
+    if (sessionId) {
+      try {
+        await fetch(`/api/session?sessionId=${sessionId}`, {
+          method: 'DELETE',
+        });
+        
+      } catch (error) {
+        console.error('❌ Ошибка при уведомлении сервера о завершении сессии:', error);
+      }
+    }
+    
     // Останавливаем анализ аудио
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -783,9 +990,24 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
     volumeHistoryRef.current = { input: [], output: [] };
     lastVolumeUpdateRef.current = 0;
     
-    // Сбрасываем ВСЕ состояния подключения
+    // === ОЧИЩАЕМ ПРОВЕРКУ ОЧЕРЕДИ ===
+    if (queueCheckIntervalRef.current) {
+      clearInterval(queueCheckIntervalRef.current);
+      queueCheckIntervalRef.current = null;
+    }
+    queueCheckErrorCountRef.current = 0; // Сбрасываем счетчик ошибок
+    
+    // === СБРАСЫВАЕМ ВСЕ СОСТОЯНИЯ ===
+    
     setIsConnected(false);
     setIsConnecting(false);
+    setIsAttemptingFromQueue(false); // Сбрасываем optimistic UI флаг
+    setSessionId(null);
+    setTimeRemaining(null);
+    setSessionStartTime(null);
+    setIsInQueue(false);
+    setQueuePosition(null);
+    setSessionMessage('');
     onVoiceStateChange('disconnected');
     onVolumeChange(0, 'input');
     onVolumeChange(0, 'output');
@@ -846,14 +1068,18 @@ export default function VoiceControls({ systemPrompt, onVoiceStateChange, onVolu
         {!isConnected ? (
           <button
             onClick={connectToRealtimeAPI}
-            disabled={isConnecting}
-            className={`btn-primary ${isConnecting ? 'animate-pulse-soft' : ''}`}
+            disabled={isConnecting || isInQueue}
+            className={`btn-primary ${isConnecting ? 'animate-pulse-soft' : ''} ${isInQueue ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <div className="flex items-center space-x-3">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
-              <span>{isConnecting ? 'Подключение...' : 'Начать разговор'}</span>
+              <span>
+                {isConnecting ? 'Подключение...' : 
+                 isInQueue ? 'Ожидание в очереди...' : 
+                 'Начать разговор'}
+              </span>
             </div>
           </button>
         ) : (

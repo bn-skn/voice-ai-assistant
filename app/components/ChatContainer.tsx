@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import VoiceControls from './VoiceControls'
 import SettingsModal from './SettingsModal'
+import NotificationSystem from './NotificationSystem'
+import { useNotifications } from '../hooks/useNotifications'
 import { DEFAULT_SYSTEM_PROMPT } from '../config/system-prompt'
 
 interface ChatContainerProps {
@@ -13,6 +15,9 @@ export default function ChatContainer({ className = '' }: ChatContainerProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT)
   const [voiceState, setVoiceState] = useState<'disconnected' | 'connecting' | 'talking'>('disconnected')
+  
+  // === СИСТЕМА УВЕДОМЛЕНИЙ ===
+  const notifications = useNotifications()
   
   // Wrapper для изменений состояния (тихая работа)
   const handleVoiceStateChange = (newState: 'disconnected' | 'connecting' | 'talking') => {
@@ -68,6 +73,7 @@ export default function ChatContainer({ className = '' }: ChatContainerProps) {
               voiceState={voiceState} 
               inputVolume={inputVolume}
               outputVolume={outputVolume}
+            notifications={notifications}
             />
         </div>
       </main>
@@ -78,6 +84,12 @@ export default function ChatContainer({ className = '' }: ChatContainerProps) {
         onClose={() => setIsSettingsOpen(false)}
         systemPrompt={systemPrompt}
         onSystemPromptChange={setSystemPrompt}
+      />
+
+      {/* Система уведомлений */}
+      <NotificationSystem
+        notifications={notifications.notifications}
+        onRemove={notifications.removeNotification}
       />
     </div>
   )

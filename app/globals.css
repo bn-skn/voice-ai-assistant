@@ -263,6 +263,49 @@ div[style*="z-index: 99999"] {
   }
 }
 
+/* ===== СИСТЕМА УВЕДОМЛЕНИЙ ===== */
+
+/* Анимация прогресс-бара для автоматических уведомлений */
+@keyframes progress-countdown {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+/* Улучшенные анимации для toast-уведомлений */
+@keyframes toast-slide-in {
+  from {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-slide-out {
+  from {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
+  }
+}
+
+.animate-toast-in {
+  animation: toast-slide-in 0.3s ease-out forwards;
+}
+
+.animate-toast-out {
+  animation: toast-slide-out 0.2s ease-in forwards;
+}
+
 /* ===== 🎭 PREMIUM 3D VOICE ORB - HOLLYWOOD МИРОВОГО КЛАССА ===== */
 
 /* CSS Custom Properties для динамического управления */

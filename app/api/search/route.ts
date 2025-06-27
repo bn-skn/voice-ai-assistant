@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withApiLogging, logApiEvent, logValidationError } from '../../lib/api-logger-middleware'
+import { logOpenAICall, logSecureError } from '../../lib/logger'
+import { randomUUID } from 'crypto'
 
 /**
  * API Route для веб-поиска через ChatGPT Search
  */
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
+  const requestId = randomUUID();
+  
   try {
     const { query, location } = await req.json();
 
     if (!query || typeof query !== 'string') {
+      logValidationError('query', query, requestId);
       return NextResponse.json(
         { error: 'Query is required and must be a string' },
         { status: 400 }
@@ -16,15 +22,20 @@ export async function POST(req: NextRequest) {
 
     // Проверяем наличие API ключа
     if (!process.env.OPENAI_API_KEY) {
+      logValidationError('OPENAI_API_KEY', 'missing', requestId);
       return NextResponse.json(
         { error: 'OPENAI_API_KEY не найден в переменных окружения' },
         { status: 500 }
       );
     }
 
-
+    logApiEvent('search_request', requestId, { 
+      query: query.substring(0, 100), 
+      location: location || 'Russia' 
+    });
 
     // Используем ChatGPT Search через Chat Completions API
+    const startTime = Date.now();
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -52,9 +63,20 @@ export async function POST(req: NextRequest) {
       })
     });
 
+    const duration = Date.now() - startTime;
+    logOpenAICall('chat/completions', response.status, duration, { 
+      requestId, 
+      model: 'gpt-4o-search-preview',
+      queryLength: query.length
+    });
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('🔍 Search API error:', response.status, errorText);
+      logSecureError(new Error(`Search API error: ${response.status}`), 'search_request', {
+        requestId,
+        status: response.status,
+        details: errorText.substring(0, 200)
+      });
       return NextResponse.json(
         { 
           error: `Search API error: ${response.status}`,
@@ -68,13 +90,18 @@ export async function POST(req: NextRequest) {
     const searchResult = data.choices[0]?.message?.content;
 
     if (!searchResult) {
+      logApiEvent('search_no_results', requestId, { query: query.substring(0, 100) });
       return NextResponse.json(
         { error: 'No search results received' },
         { status: 500 }
       );
     }
 
-    
+    logApiEvent('search_completed', requestId, { 
+      query: query.substring(0, 100),
+      resultLength: searchResult.length,
+      location: location || 'Russia'
+    });
 
     return NextResponse.json({
       success: true,
@@ -89,7 +116,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: unknown) {
-    console.error('[POST /api/search] ошибка:', error);
+    logSecureError(error as Error, 'POST /api/search', { requestId });
     return NextResponse.json(
       { 
         error: error instanceof Error ? error.message : 'Unknown search error',
@@ -98,4 +125,6 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}
+
+export const POST = withApiLogging(handlePOST); 
