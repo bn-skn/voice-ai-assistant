@@ -40,19 +40,18 @@
 
 - [ ] **1.4 Установить необходимые зависимости:**
   ```bash
-  sudo apt update && sudo apt upgrade -y
-  sudo apt install -y git curl nginx
+  apt update && apt upgrade -y
+  apt install -y git curl nginx
   ```
 
 - [ ] **1.5 Установить Docker и Docker Compose:**
   ```bash
   # Установить Docker
   curl -fsSL https://get.docker.com -o get-docker.sh
-  sudo sh get-docker.sh
-  sudo usermod -aG docker your_username
+  sh get-docker.sh
 
   # Установить Docker Compose
-  sudo apt install -y docker-compose-plugin
+  apt install -y docker-compose-plugin
   ```
   **ВАЖНО:** После этого выйдите с сервера (`exit`) и зайдите снова под вашим новым пользователем, чтобы изменения прав для Docker применились.
   ```bash
@@ -115,34 +114,34 @@
 - [ ] **4.1 Создать конфигурационный файл Nginx:**
   *Замените `your_domain.com` на ваше реальное доменное имя.*
   ```bash
-  sudo cp nginx.example.conf /etc/nginx/sites-available/your_domain.com
+  cp nginx.example.conf /etc/nginx/sites-available/your_domain.com
   ```
 
 - [ ] **4.2 Отредактировать конфигурацию Nginx:**
   ```bash
-  sudo nano /etc/nginx/sites-available/your_domain.com
+  nano /etc/nginx/sites-available/your_domain.com
   ```
   - Внутри файла найдите и замените все вхождения `your_domain.com` на ваш домен.
   - Сохраните и закройте файл.
 
 - [ ] **4.3 Активировать конфигурацию и проверить Nginx:**
   ```bash
-  sudo ln -s /etc/nginx/sites-available/your_domain.com /etc/nginx/sites-enabled/
-  sudo nginx -t
+  ln -s /etc/nginx/sites-available/your_domain.com /etc/nginx/sites-enabled/
+  nginx -t
   ```
   **Ожидаемый результат:** `syntax is ok` и `test is successful`. Если есть ошибки, перепроверьте шаг 4.2.
 
 - [ ] **4.4 Получить SSL-сертификат от Let's Encrypt:**
   ```bash
-  sudo apt install -y certbot python3-certbot-nginx
-  sudo certbot --nginx -d your_domain.com
+  apt install -y certbot python3-certbot-nginx
+  certbot --nginx -d your_domain.com
   ```
   - Certbot задаст несколько вопросов: введите ваш email, согласитесь с условиями.
   - Выберите опцию `2` (Redirect), чтобы автоматически перенаправлять все HTTP-запросы на HTTPS.
 
 - [ ] **4.5 Перезапустить Nginx для применения всех изменений:**
   ```bash
-  sudo systemctl restart nginx
+  systemctl restart nginx
   ```
 
 ---
@@ -185,12 +184,12 @@
 
 - **Сайт не открывается:**
   - Проверьте, что A-запись вашего домена правильно указывает на IP сервера.
-  - Проверьте статус Nginx: `sudo systemctl status nginx`.
-  - Проверьте firewall: `sudo ufw status`.
+  - Проверьте статус Nginx: `systemctl status nginx`.
+  - Проверьте firewall: `ufw status`.
 
 - **Микрофон не работает:**
   - Убедитесь, что вы используете `https://` (с буквой 's').
-  - Проверьте логи Nginx на ошибки WebSocket: `sudo tail -f /var/log/nginx/error.log`.
+  - Проверьте логи Nginx на ошибки WebSocket: `tail -f /var/log/nginx/error.log`.
 
 - **Приложение выдает ошибку:**
   - Проверьте логи приложения: `npm run logs:errors`. Скорее всего, проблема в `OPENAI_API_KEY`.
