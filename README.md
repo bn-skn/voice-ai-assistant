@@ -105,6 +105,7 @@ npm run docker:start
 | ----------------------------------------------- | -------------------------------------------------- |
 | **[DEPLOYMENT_FINAL_CHECKLIST.md](./DEPLOYMENT_FINAL_CHECKLIST.md)** | **Главный чек-лист по деплою на сервер.**      |
 | **[DOCKER_GUIDE.md](./DOCKER_GUIDE.md)**                   | Полное руководство по Docker-командам и управлению. |
+| **[REPLIT_GUIDE.md](./REPLIT_GUIDE.md)**                   | **Новое!** Пошаговый гайд по деплою на Replit.   |
 | **[LOG_ACCESS_GUIDE.md](./LOG_ACCESS_GUIDE.md)**           | Как просматривать и анализировать логи.          |
 | **[SECURITY_GUIDE.md](./SECURITY_GUIDE.md)**               | Обзор всех мер безопасности проекта.             |
 | **[TOOLS_GUIDE.md](./TOOLS_GUIDE.md)**                     | Описание встроенных функций (Tools) ассистента.  |
