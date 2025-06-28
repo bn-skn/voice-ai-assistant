@@ -67,7 +67,7 @@ build() {
     check_env
     
     echo "Сборка может занять несколько минут..."
-    if docker-compose build --no-cache; then
+    if docker compose build --no-cache; then
         print_success "Образ успешно собран"
     else
         print_error "Ошибка при сборке образа"
@@ -81,7 +81,7 @@ start() {
     check_docker
     check_env
     
-    if docker-compose up -d; then
+    if docker compose up -d; then
         print_success "Контейнер запущен"
         echo "Приложение доступно по адресу: http://localhost:3000"
         echo "Для просмотра логов: $0 logs"
@@ -96,7 +96,7 @@ stop() {
     print_header "Остановка контейнера"
     check_docker
     
-    if docker-compose down; then
+    if docker compose down; then
         print_success "Контейнер остановлен"
     else
         print_error "Ошибка при остановке контейнера"
@@ -117,9 +117,9 @@ logs() {
     check_docker
     
     if [[ "$2" == "follow" ]] || [[ "$2" == "-f" ]]; then
-        docker-compose logs -f
+        docker compose logs -f
     else
-        docker-compose logs --tail=50
+        docker compose logs --tail=50
     fi
 }
 
@@ -129,11 +129,11 @@ status() {
     check_docker
     
     echo "=== Docker Compose Services ==="
-    docker-compose ps
+    docker compose ps
     
     echo -e "\n=== Container Stats ==="
-    if docker-compose ps | grep -q "Up"; then
-        CONTAINER_ID=$(docker-compose ps -q voice-assistant)
+    if docker compose ps | grep -q "Up"; then
+        CONTAINER_ID=$(docker compose ps -q voice-assistant)
         if [[ -n "$CONTAINER_ID" ]]; then
             docker stats "$CONTAINER_ID" --no-stream
         fi
@@ -155,7 +155,7 @@ cleanup() {
     check_docker
     
     echo "Остановка и удаление контейнеров..."
-    docker-compose down --remove-orphans
+    docker compose down --remove-orphans
     
     echo "Удаление образов..."
     docker image prune -f
@@ -173,13 +173,13 @@ rebuild() {
     check_env
     
     echo "Остановка текущих контейнеров..."
-    docker-compose down
+    docker compose down
     
     echo "Удаление старых образов..."
-    docker-compose build --no-cache
+    docker compose build --no-cache
     
     echo "Запуск обновленного контейнера..."
-    docker-compose up -d
+    docker compose up -d
     
     print_success "Пересборка завершена"
     echo "Приложение доступно по адресу: http://localhost:3000"
@@ -201,8 +201,8 @@ export_logs() {
     cp -r ./logs/* "$EXPORT_DIR/" 2>/dev/null || true
     
     # Экспортируем логи Docker контейнера
-    if docker-compose ps | grep -q "Up"; then
-        docker-compose logs > "$EXPORT_DIR/docker_container.log" 2>&1
+    if docker compose ps | grep -q "Up"; then
+        docker compose logs > "$EXPORT_DIR/docker_container.log" 2>&1
     fi
     
     print_success "Логи экспортированы в: $EXPORT_DIR"

@@ -164,11 +164,12 @@ npm run docker:cleanup         # Очистка Docker ресурсов
 ### Традиционный способ
 ```bash
 # Сборка и запуск
-docker-compose up --build -d
+docker compose build --no-cache
+docker compose up -d
 
 # Логи и управление
-docker-compose logs -f
-docker-compose down
+docker compose logs -f
+docker compose down
 ```
 
 **📖 Подробное руководство**: [DOCKER_GUIDE.md](./DOCKER_GUIDE.md)
