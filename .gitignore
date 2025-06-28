@@ -57,4 +57,3 @@ ehthumbs.db
 logs/
 
 # Docker
-docker-compose.yml

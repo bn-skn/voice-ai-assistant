@@ -1,0 +1,55 @@
+services:
+  voice-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voice-ai-assistant-container
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+    volumes:
+      # Монтируем папку логов для постоянного хранения
+      - ./logs:/app/logs
+      # Опционально: монтируем конфиги для hot-reload в development
+      # - ./app/config:/app/app/config:ro
+    networks:
+      - app-network
+    # Health check (дублирует Dockerfile, но для docker-compose)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/session?action=stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Ограничения ресурсов
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    # Логирование контейнера
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Метки для мониторинга
+    labels:
+      - "app=voice-ai-assistant"
+      - "version=1.0.0"
+      - "environment=production"
+
+networks:
+  app-network:
+    driver: bridge
+    name: voice-assistant-network 
