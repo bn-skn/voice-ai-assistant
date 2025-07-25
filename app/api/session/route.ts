@@ -258,6 +258,6 @@ async function handleGET(req: NextRequest) {
       { status: 500 }
     )
   }
-}
+} 
 
 export const GET = withApiLogging(handleGET); 

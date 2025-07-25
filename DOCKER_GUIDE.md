@@ -1,220 +1,299 @@
-# 🐳 Docker Guide - Голосовой ИИ Ассистент
+# 🐳 Docker Guide - Voice AI Assistant (Production Ready)
 
-Краткое руководство по развертыванию голосового ИИ-ассистента с помощью Docker.
+Полное руководство по развертыванию Voice AI Assistant с помощью Docker, основанное на реальном опыте production деплоя.
+
+## 🎯 Обзор
+
+Проект использует **multi-stage Docker** сборку с оптимизацией для production:
+- **Alpine Linux** базовый образ для минимального размера
+- **Health checks** для мониторинга состояния
+- **Resource limits** для контроля потребления ресурсов
+- **Graceful shutdown** для корректного завершения
+- **Централизованное логирование** с ротацией
 
 ## 🚀 Быстрый старт
 
-### 1. Подготовка
+### 1. Подготовка окружения
 ```bash
 # Клонируйте проект
-git clone https://github.com/yourusername/voice-ai-assistant.git
+git clone https://github.com/bn-skn/voice-ai-assistant.git
 cd voice-ai-assistant
 
-# Создайте .env.local файл
+# Создайте .env.local файл с API ключом
 cp .env.example .env.local
-# Добавьте ваш OPENAI_API_KEY в .env.local
+
+# Отредактируйте .env.local и добавьте ваш OpenAI API ключ
+nano .env.local
+# OPENAI_API_KEY=sk-proj-your-key-here
+# NODE_ENV=production
+# LOG_LEVEL=info
+# ADMIN_TOKEN=your-secret-admin-token
 ```
 
-### 2. Запуск через скрипт (рекомендуется)
+### 2. Сборка и запуск (Рекомендуемый способ)
 ```bash
-# Сборка и запуск одной командой
+# Полный цикл сборки и запуска
+npm run docker:build    # Собираем Docker образ
+npm run docker:start    # Запускаем контейнер
+
+# Проверяем статус
+npm run docker:status   # Показывает статус, health check и статистику
+```
+
+### 3. Альтернативный способ через скрипты
+```bash
+# Используем прямые скрипты
 ./scripts/docker-ops.sh build
 ./scripts/docker-ops.sh start
+./scripts/docker-ops.sh status
+```
 
-# Или через npm
-npm run docker:build
+## 📋 Все доступные команды
+
+### 🔧 Управление контейнером
+```bash
+# === СБОРКА И ЗАПУСК ===
+npm run docker:build     # Сборка Docker образа (с кешированием)
+npm run docker:start     # Запуск контейнера в фоне
+npm run docker:restart   # Перезапуск контейнера
+npm run docker:stop      # Остановка контейнера
+
+# === МОНИТОРИНГ ===
+npm run docker:status    # Полный статус + health check + статистика
+npm run docker:logs      # Показать логи контейнера
+npm run docker:logs:follow  # Следить за логами в реальном времени
+
+# === ОБСЛУЖИВАНИЕ ===
+npm run docker:cleanup   # Очистка неиспользуемых Docker ресурсов
+npm run docker:rebuild   # Полная пересборка (очистка кеша + сборка)
+```
+
+### 🎛️ Прямые Docker Compose команды
+```bash
+# Для продвинутых пользователей
+docker-compose build --no-cache    # Сборка без кеша
+docker-compose up -d               # Запуск в фоне
+docker-compose down                # Остановка и удаление
+docker-compose ps                  # Список контейнеров
+docker-compose exec voice-assistant bash  # Подключение к контейнеру
+```
+
+## 🏗️ Архитектура Docker
+
+### Dockerfile (Multi-stage сборка)
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   DEPS STAGE    │    │  BUILDER STAGE  │    │  RUNTIME STAGE  │
+│                 │    │                 │    │                 │
+│ • node:20-alpine│    │ • node:20-alpine│    │ • node:20-alpine│
+│ • Production    │────▶│ • Build Next.js │────▶│ • Runtime only │
+│   dependencies │    │ • TypeScript    │    │ • Health checks │
+│                 │    │ • Static files  │    │ • Non-root user │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+        ↓                        ↓                        ↓
+    ~50MB deps            Build artifacts            Final: ~100MB
+```
+
+### Docker Compose конфигурация
+- **Контейнер**: `voice-ai-assistant-container`
+- **Порт**: 3000 (HTTP)
+- **Сеть**: `voice-assistant-network`
+- **Лимиты**: 512MB RAM, 0.5 CPU
+- **Health check**: каждые 30 секунд
+- **Автоперезапуск**: unless-stopped
+
+## 📊 Мониторинг и отладка
+
+### Проверка состояния
+```bash
+# Быстрая проверка
+npm run docker:status
+
+# Детальная информация
+docker stats voice-ai-assistant-container
+docker inspect voice-ai-assistant-container
+```
+
+### Анализ логов
+```bash
+# Логи приложения (через Next.js)
+npm run logs:live         # Логи в реальном времени
+npm run logs:errors       # Только ошибки
+npm run logs:sessions     # Логи сессий
+
+# Логи Docker контейнера
+npm run docker:logs       # Все логи контейнера
+docker-compose logs -f    # Docker Compose логи
+```
+
+### Health Check
+Встроенная проверка здоровья:
+- **URL**: `http://localhost:3000/api/session?action=stats`
+- **Интервал**: 30 секунд
+- **Таймаут**: 10 секунд
+- **Попытки**: 3 перед failure
+
+```bash
+# Ручная проверка health check
+curl -f http://localhost:3000/api/session?action=stats
+```
+
+## 🛠️ Разработка и отладка
+
+### Подключение к контейнеру
+```bash
+# Bash сессия внутри контейнера
+docker-compose exec voice-assistant bash
+
+# Выполнение команд
+docker-compose exec voice-assistant npm run logs:stats
+docker-compose exec voice-assistant curl http://localhost:3000/api/session?action=stats
+```
+
+### Отладка проблем сборки
+```bash
+# Пересборка без кеша
+npm run docker:rebuild
+
+# Проверка образов
+docker images | grep voice-ai-assistant
+
+# Очистка Docker системы
+npm run docker:cleanup
+docker system prune -a -f
+```
+
+### Изменение конфигурации
+```bash
+# После изменения .env.local
+npm run docker:restart
+
+# После изменения кода
+npm run docker:rebuild
 npm run docker:start
 ```
 
-### 3. Запуск через docker-compose
+## 🚨 Решение типичных проблем
+
+### ❌ "Cannot connect to Docker daemon"
 ```bash
-# Сборка образа
-docker-compose build
-
-# Запуск контейнера
-docker-compose up -d
-
-# Просмотр логов
-docker-compose logs -f
+# Проверка Docker
+sudo systemctl status docker
+sudo systemctl start docker
+sudo usermod -aG docker $USER  # Добавить пользователя в группу docker
+# Перелогиниться после добавления в группу
 ```
 
-## 📋 Доступные команды
-
-### Через скрипт `docker-ops.sh`:
+### ❌ "Port 3000 already in use"
 ```bash
-./scripts/docker-ops.sh build      # Собрать образ
-./scripts/docker-ops.sh start      # Запустить контейнер
-./scripts/docker-ops.sh stop       # Остановить контейнер
-./scripts/docker-ops.sh restart    # Перезапустить
-./scripts/docker-ops.sh status     # Статус и health check
-./scripts/docker-ops.sh logs       # Показать логи
-./scripts/docker-ops.sh logs follow # Логи в реальном времени
-./scripts/docker-ops.sh cleanup    # Очистить Docker ресурсы
-./scripts/docker-ops.sh rebuild    # Полная пересборка
-./scripts/docker-ops.sh export     # Экспорт всех логов
+# Найти процесс использующий порт
+sudo lsof -i :3000
+sudo netstat -tulpn | grep :3000
+
+# Остановить конфликтующий сервис
+npm run docker:stop
+sudo systemctl stop nginx  # Если nginx использует порт
 ```
 
-### Через npm скрипты:
-```bash
-npm run docker:build              # Сборка
-npm run docker:start              # Запуск
-npm run docker:stop               # Остановка
-npm run docker:restart            # Перезапуск
-npm run docker:status             # Статус
-npm run docker:logs               # Логи
-npm run docker:logs:follow        # Логи в реальном времени
-npm run docker:cleanup            # Очистка
-npm run docker:rebuild            # Пересборка
+### ❌ "Build errors" (TypeScript/ESLint)
+В production режиме ошибки линтера игнорируются (`next.config.ts`):
+```typescript
+typescript: { ignoreBuildErrors: true },
+eslint: { ignoreDuringBuilds: true }
 ```
 
-### Через алиасы (после `source aliases.sh`):
+### ❌ "Health check failing"
 ```bash
-docker-build                      # Сборка
-docker-start                      # Запуск
-docker-stop                       # Остановка
-docker-restart                    # Перезапуск
-docker-status                     # Статус
-docker-logs                       # Логи
-docker-logs-live                  # Логи в реальном времени
-docker-cleanup                    # Очистка
-docker-rebuild                    # Пересборка
-docker-export                     # Экспорт логов
-```
+# Проверка API вручную
+curl -v http://localhost:3000/api/session?action=stats
 
-## 🔧 Конфигурация
-
-### Переменные окружения (.env.local):
-```env
-# Обязательные
-OPENAI_API_KEY=sk-your-openai-api-key-here
-NODE_ENV=production
-
-# Опциональные
-LOG_LEVEL=info
-ADMIN_TOKEN=your-secret-admin-token-here
-```
-
-### Ресурсы контейнера:
-- **Память**: 256MB-512MB
-- **CPU**: 0.25-0.5 ядра
-- **Порт**: 3000
-- **Логи**: автоматическая ротация (10MB, 3 файла)
-
-## 📊 Мониторинг
-
-### Health Check:
-```bash
-# Автоматический health check каждые 30 секунд
-curl http://localhost:3000/api/session?action=stats
-
-# Или через скрипт
-./scripts/docker-ops.sh status
-```
-
-### Логи:
-```bash
 # Логи контейнера
-docker-compose logs -f
+npm run docker:logs
 
-# Логи приложения (в папке logs/)
-npm run logs:live
-
-# Объединенные логи
-./scripts/docker-ops.sh export
+# Перезапуск
+npm run docker:restart
 ```
 
-### Статистика ресурсов:
+### ❌ "Out of memory"
 ```bash
-# Через docker stats
+# Увеличить лимиты в docker-compose.yml
+memory: 1024M  # Вместо 512M
+
+# Проверить использование ресурсов
 docker stats voice-ai-assistant-container
-
-# Через скрипт (включает health check)
-./scripts/docker-ops.sh status
 ```
 
-## 🛠️ Troubleshooting
+## 📈 Оптимизация и production
 
-### Проблема: Контейнер не запускается
+### Размер образа
+- **Базовый образ**: Alpine Linux (~5MB)
+- **Dependencies**: ~50MB
+- **Application**: ~45MB
+- **Итого**: ~100MB (оптимизировано)
+
+### Рекомендации для production
 ```bash
-# Проверить логи
-docker-compose logs
+# 1. Используйте конкретные версии образов
+FROM node:20.11-alpine
 
-# Проверить .env.local
-cat .env.local | grep OPENAI_API_KEY
+# 2. Очищайте кеш пакетных менеджеров
+RUN npm ci --frozen-lockfile && npm cache clean --force
 
-# Пересобрать образ
-./scripts/docker-ops.sh rebuild
+# 3. Используйте .dockerignore
+logs/
+node_modules/
+.git/
+
+# 4. Настройте лимиты ресурсов
+deploy:
+  resources:
+    limits:
+      memory: 512M
+      cpus: '0.5'
 ```
 
-### Проблема: Приложение недоступно
+### Мониторинг в production
 ```bash
-# Проверить статус
-./scripts/docker-ops.sh status
+# Автоматические проверки
+*/5 * * * * curl -f http://localhost:3000/api/session?action=stats
 
-# Проверить порты
-netstat -tlnp | grep :3000
+# Мониторинг ресурсов
+docker stats --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}"
 
-# Перезапустить
-./scripts/docker-ops.sh restart
+# Ротация логов (встроена в Docker)
+logging:
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
 ```
 
-### Проблема: Ошибки OpenAI API
+## 🔗 Интеграция с Nginx
+
+Для production развертывания с доменом:
+
 ```bash
-# Проверить логи ошибок
-npm run logs:errors
+# 1. Убедитесь что Docker контейнер работает на порту 3000
+npm run docker:status
 
-# Проверить API ключ
-curl -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models
+# 2. Настройте Nginx как reverse proxy
+sudo cp nginx.production.conf /etc/nginx/sites-available/your-domain.com
+
+# 3. Замените YOUR_DOMAIN.COM на ваш домен
+sudo sed -i 's/YOUR_DOMAIN.COM/your-domain.com/g' /etc/nginx/sites-available/your-domain.com
+
+# 4. Активируйте конфигурацию
+sudo ln -s /etc/nginx/sites-available/your-domain.com /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### Проблема: Нехватка места
-```bash
-# Очистить Docker ресурсы
-./scripts/docker-ops.sh cleanup
+## 📚 Дополнительные ресурсы
 
-# Очистить логи приложения
-npm run logs:clean
-
-# Проверить размер
-du -sh logs/ .next/ node_modules/
-```
-
-## 🚀 Production деплой
-
-### На сервере:
-1. **Установите Docker и Docker Compose**
-2. **Настройте Nginx** (см. `nginx.example.conf`)
-3. **Получите SSL сертификаты** (Let's Encrypt)
-4. **Запустите контейнер**:
-   ```bash
-   ./scripts/docker-ops.sh build
-   ./scripts/docker-ops.sh start
-   ```
-
-### Автозапуск:
-```bash
-# Контейнер автоматически перезапускается (restart: unless-stopped)
-sudo systemctl enable docker
-```
-
-### Мониторинг в production:
-```bash
-# Настройте мониторинг логов
-tail -f logs/error-$(date +%Y-%m-%d).log
-
-# Health check через cron
-echo "*/5 * * * * curl -f http://localhost:3000/api/session?action=stats || echo 'Health check failed'" | crontab -
-```
+- **[nginx.production.conf](./nginx.production.conf)** - Production Nginx конфигурация
+- **[server-setup/](./server-setup/)** - Серверные скрипты для мониторинга и бэкапов
+- **[LOGGING_GUIDE.md](./LOGGING_GUIDE.md)** - Руководство по логированию
+- **[SECURITY_GUIDE.md](./SECURITY_GUIDE.md)** - Безопасность и best practices
 
 ---
 
-## 📝 Полезные ссылки
-
-- **Основное руководство**: [README.md](./README.md)
-- **Деплой гайд**: [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
-- **Логирование**: [LOG_ACCESS_GUIDE.md](./LOG_ACCESS_GUIDE.md)
-- **Безопасность**: [SECURITY_GUIDE.md](./SECURITY_GUIDE.md)
-
----
-
-**🐳 Powered by Docker + Next.js + OpenAI Realtime API** 
+**🎯 Docker конфигурация протестирована в production и готова к использованию!** 

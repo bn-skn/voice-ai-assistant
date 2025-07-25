@@ -125,6 +125,6 @@ async function handlePOST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+} 
 
 export const POST = withApiLogging(handlePOST); 
